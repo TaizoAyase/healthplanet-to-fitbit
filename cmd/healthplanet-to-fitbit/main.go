@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 
 	htf "healthplanet-to-fitbit"
@@ -18,8 +22,12 @@ func main() {
 	healthPlanetAccessToken := os.Getenv("HEALTHPLANET_ACCESS_TOKEN")
 	fitbitClientId := os.Getenv("FITBIT_CLIENT_ID")
 	fitbitClientSecret := os.Getenv("FITBIT_CLIENT_SECRET")
-	fitbitAccessToken := os.Getenv("FITBIT_ACCESS_TOKEN")
+	// fitbitAccessToken := os.Getenv("FITBIT_ACCESS_TOKEN")
 	fitbitRefreshToken := os.Getenv("FITBIT_REFRESH_TOKEN")
+
+	fitbitAccessToken, err := refreshAccessToken(fitbitClientId, fitbitRefreshToken)
+	fmt.Println(fitbitAccessToken)
+	fmt.Println(err)
 
 	// Initialize API clients
 	healthPlanetAPI := htf.HealthPlanetAPI{
@@ -71,4 +79,87 @@ func main() {
 	}
 
 	log.Printf("done")
+}
+
+func refreshAccessToken(clientID string, currentRefreshToken string) (string, error) {
+	endpoint := "https://api.fitbit.com/oauth2/token"
+
+	data := url.Values{}
+	data.Add("grant_type", "refresh_token")
+	data.Add("client_id", clientID)
+	data.Add("refresh_token", currentRefreshToken)
+
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBufferString(data.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("error creating request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error in response: %v", err)
+	}
+	defer resp.Body.Close()
+
+	fmt.Println(resp.Body)
+	dec := json.NewDecoder(resp.Body)
+	resData := make(map[string]interface{})
+	if err := dec.Decode(&resData); err != nil {
+		return "", fmt.Errorf("error decoding response: %v", err)
+	}
+	fmt.Println(resData)
+
+	accessToken := resData["access_token"].(string)
+	newRefreshToken := resData["refresh_token"].(string)
+
+	updateEnvFile(accessToken, newRefreshToken)
+	fmt.Println("Access token and refresh token updated.")
+	return accessToken, nil
+}
+
+func updateEnvFile(accessToken, refreshToken string) {
+	fmt.Println(accessToken, refreshToken)
+	envFilePath := ".env"
+	envFile, err := os.OpenFile(envFilePath, os.O_RDWR, 0644)
+	if err != nil {
+		fmt.Printf("Error opening .env file: %v\n", err)
+		return
+	}
+	defer envFile.Close()
+
+	// Read the existing content
+	fileInfo, err := envFile.Stat()
+	if err != nil {
+		fmt.Printf("Error getting file info: %v\n", err)
+		return
+	}
+
+	fileSize := fileInfo.Size()
+	buffer := make([]byte, fileSize)
+	_, err = envFile.Read(buffer)
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+
+	// Split the content by lines
+	lines := bytes.Split(buffer, []byte("\n"))
+
+	// Update the lines containing FITBIT_ACCESS_TOKEN and FITBIT_REFRESH_TOKEN
+	for i, line := range lines {
+		if bytes.HasPrefix(line, []byte("FITBIT_ACCESS_TOKEN=")) {
+			lines[i] = []byte(fmt.Sprintf("FITBIT_ACCESS_TOKEN=%s", accessToken))
+		}
+		if bytes.HasPrefix(line, []byte("FITBIT_REFRESH_TOKEN=")) {
+			lines[i] = []byte(fmt.Sprintf("FITBIT_REFRESH_TOKEN=%s", refreshToken))
+		}
+	}
+
+	// Write the updated content back to the file
+	envFile.Seek(0, 0)
+	envFile.Truncate(0)
+	_, err = envFile.Write(bytes.Join(lines, []byte("\n")))
+	if err != nil {
+		fmt.Printf("Error writing to .env file: %v\n", err)
+	}
 }
