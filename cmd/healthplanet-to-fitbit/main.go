@@ -26,7 +26,6 @@ func main() {
 	fitbitRefreshToken := os.Getenv("FITBIT_REFRESH_TOKEN")
 
 	fitbitAccessToken, err := refreshAccessToken(fitbitClientId, fitbitRefreshToken)
-	fmt.Println(fitbitAccessToken)
 	fmt.Println(err)
 
 	// Initialize API clients
@@ -101,13 +100,11 @@ func refreshAccessToken(clientID string, currentRefreshToken string) (string, er
 	}
 	defer resp.Body.Close()
 
-	fmt.Println(resp.Body)
 	dec := json.NewDecoder(resp.Body)
 	resData := make(map[string]interface{})
 	if err := dec.Decode(&resData); err != nil {
 		return "", fmt.Errorf("error decoding response: %v", err)
 	}
-	fmt.Println(resData)
 
 	accessToken := resData["access_token"].(string)
 	newRefreshToken := resData["refresh_token"].(string)
@@ -118,7 +115,6 @@ func refreshAccessToken(clientID string, currentRefreshToken string) (string, er
 }
 
 func updateEnvFile(accessToken, refreshToken string) {
-	fmt.Println(accessToken, refreshToken)
 	envFilePath := ".env"
 	envFile, err := os.OpenFile(envFilePath, os.O_RDWR, 0644)
 	if err != nil {
