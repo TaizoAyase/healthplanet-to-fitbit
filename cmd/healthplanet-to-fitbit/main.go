@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	htf "healthplanet-to-fitbit"
 
@@ -24,8 +25,19 @@ func main() {
 	fitbitClientSecret := os.Getenv("FITBIT_CLIENT_SECRET")
 	// fitbitAccessToken := os.Getenv("FITBIT_ACCESS_TOKEN")
 	fitbitRefreshToken := os.Getenv("FITBIT_REFRESH_TOKEN")
-
-	fitbitAccessToken, err := refreshAccessToken(fitbitClientId, fitbitRefreshToken)
+	var fitbitAccessToken string
+	var err error
+	for i := 0; i < 5; i++ {
+		fitbitAccessToken, err = refreshAccessToken(fitbitClientId, fitbitRefreshToken)
+		if err == nil {
+			break
+		}
+		log.Printf("Attempt %d: failed to refresh access token: %v", i+1, err)
+		time.Sleep(time.Duration(1<<i) * time.Second) // Exponential backoff
+	}
+	if err != nil {
+		log.Fatalf("Failed to refresh access token after 5 attempts: %v", err)
+	}
 	fmt.Println(err)
 
 	// Initialize API clients
